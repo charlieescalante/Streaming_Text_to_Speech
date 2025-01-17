@@ -1,6 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 from streamlit_geolocation import streamlit_geolocation
+from audio_recorder_streamlit import audio_recorder
 import os
 import base64
 
@@ -14,11 +15,8 @@ st.info(
 )
 
 # Initialize session states
-if "step" not in st.session_state:
-    st.session_state.step = 0  # Step 0: Initial state, Step 1: GPS retrieved
-
-if "location" not in st.session_state:
-    st.session_state.location = None
+if "tour_started" not in st.session_state:
+    st.session_state.tour_started = False
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -56,72 +54,48 @@ def autoplay_audio(file_path):
     """
     st.markdown(md, unsafe_allow_html=True)
 
-# Step 0: Retrieve GPS Coordinates
-if st.session_state.step == 0:
-    st.write("Click the button below to fetch your location.")
+# Start Tour Button
+if st.button("Start Tour"):
+    st.session_state.tour_started = True
+
+# Process Tour
+if st.session_state.tour_started:
     location = streamlit_geolocation()
-    if location and location["latitude"] and location["longitude"]:
-        st.session_state.location = location
+
+    if location:
         st.success("Geolocation Retrieved Successfully!")
-        st.session_state.step = 1  # Move to Step 1
-    else:
-        st.warning("Waiting for location...")
+        lat = location["latitude"]
+        lon = location["longitude"]
 
-# Step 1: Generate Tour
-elif st.session_state.step == 1:
-    lat = st.session_state.location["latitude"]
-    lon = st.session_state.location["longitude"]
+        st.write(f"**Latitude:** {lat}")
+        st.write(f"**Longitude:** {lon}")
 
-    st.write(f"**Latitude:** {lat}")
-    st.write(f"**Longitude:** {lon}")
-
-    if st.button("Generate Tour"):
         # Prepare user input for OpenAI
         user_message = f"My current GPS coordinates are: Latitude {lat}, Longitude {lon}."
         st.session_state.messages.append({"role": "user", "content": user_message})
 
-        # Debugging: Display the OpenAI request payload
-        st.write("**OpenAI Request Payload:**")
-        st.json(st.session_state.messages)
-
         # Call OpenAI ChatCompletion
         with st.spinner("Generating your tour guide narration..."):
-            try:
-                chatresponse = client.chat.completions.create(
-                    model="gpt-4",
-                    messages=st.session_state.messages,
-                    temperature=1,
-                    n=1,
-                )
+            chatresponse = client.chat.completions.create(
+                model="gpt-4",
+                messages=st.session_state.messages,
+                temperature=1,
+                n=1,
+            )
 
-                # Debugging: Display the raw OpenAI response
-                st.write("**OpenAI Response:**")
-                st.json(chatresponse)
+        # Extract and display the assistant’s response
+        tour_guide_text = chatresponse.choices[0].message.content
+        st.session_state.messages.append({"role": "assistant", "content": tour_guide_text})
 
-                # Extract the assistant’s response
-                if (
-                    "choices" in chatresponse
-                    and len(chatresponse.choices) > 0
-                    and "message" in chatresponse.choices[0]
-                    and "content" in chatresponse.choices[0].message
-                ):
-                    tour_guide_text = chatresponse.choices[0].message.content.strip()
-                    st.session_state.messages.append({"role": "assistant", "content": tour_guide_text})
+        st.write("---")
+        st.markdown("#### Your PocketGuide says:")
+        st.write(tour_guide_text)
 
-                    st.write("---")
-                    st.markdown("#### Your PocketGuide says:")
-                    st.write(tour_guide_text)
+        # Generate and play audio
+        with st.spinner("Generating audio..."):
+            audio_file = text_to_speech(tour_guide_text)
+            autoplay_audio(audio_file)
+            os.remove(audio_file)
 
-                    # Generate and play audio
-                    with st.spinner("Generating audio..."):
-                        audio_file = text_to_speech(tour_guide_text)
-                        autoplay_audio(audio_file)
-                        os.remove(audio_file)
-                else:
-                    st.error("OpenAI returned an invalid response. Please try again.")
-
-            except Exception as e:
-                st.error(f"An error occurred while communicating with OpenAI: {e}")
-
-        # Reset the steps for another tour
-        st.session_state.step = 0
+    else:
+        st.warning("Click the button to fetch your geolocation.")
