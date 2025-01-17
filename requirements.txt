@@ -1,4 +1,6 @@
 streamlit
+sounddevice
+numpy
 pyaudio
 geopy
 openai
