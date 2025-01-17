@@ -1,0 +1,6 @@
+streamlit
+geopy
+openai
+requests
+streamlit-js-eval
+streamlit-geolocation==0.0.10
